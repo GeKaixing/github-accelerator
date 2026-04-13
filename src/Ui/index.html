@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GitHub Accelerator GUI</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; margin: 24px; color:#1f2937; }
+    .card { border:1px solid #d1d5db; border-radius:10px; padding:14px; margin-bottom:14px; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button { border:0; background:#2563eb; color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
+    button.alt { background:#6b7280; }
+    .ok { color:#047857; }
+    .bad { color:#b91c1c; }
+    .warn { color:#b45309; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#f3f4f6; padding:8px; border-radius:8px; }
+    table { width:100%; border-collapse: collapse; }
+    th,td { padding:8px; border-bottom:1px solid #e5e7eb; text-align:left; }
+  </style>
+</head>
+<body>
+  <h1>GitHub Accelerator</h1>
+
+  <div class="card">
+    <div id="status">读取中...</div>
+    <div class="mono" id="proxy"></div>
+    <div class="row" style="margin-top:8px;">
+      <button id="enableBtn">一键加速</button>
+      <button id="disableBtn" class="alt">关闭加速</button>
+      <button id="refreshBtn" class="alt">刷新</button>
+    </div>
+    <div id="gitStatus" style="margin-top:8px;"></div>
+  </div>
+
+  <div class="card">
+    <h3>连通性测试</h3>
+    <div class="row"><button id="testAllBtn">测试选中项</button></div>
+    <table id="tbl"><thead><tr><th></th><th>名称</th><th>域名</th><th>结果</th></tr></thead><tbody></tbody></table>
+  </div>
+
+<script>
+const items = [
+  {name:'Github Dev',domain:'github.dev',github:true},
+  {name:'Github Api',domain:'api.github.com',github:true},
+  {name:'Github Assets',domain:'github.githubassets.com',github:true},
+  {name:'Github Education',domain:'education.github.com',github:true},
+  {name:'Github Resources',domain:'resources.github.com',github:true},
+  {name:'Github Uploads',domain:'uploads.github.com',github:true},
+  {name:'Github Archiveprogram',domain:'archiveprogram.github.com',github:true},
+  {name:'Github UserContent',domain:'githubusercontent.com',github:true},
+  {name:'Github 网站 (Git Push)',domain:'github.com',github:true},
+  {name:'Github App',domain:'githubapp.com',github:true},
+  {name:'Github.io',domain:'github.io',github:true},
+];
+
+let githubOnly = true;
+
+function renderRows(){
+  const tb = document.querySelector('#tbl tbody'); tb.innerHTML='';
+  for(const it of items){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><input type="checkbox" data-domain="${it.domain}" data-github="${it.github?1:0}" checked></td><td>${it.name}</td><td>${it.domain}</td><td id="res_${it.domain.replace(/[^a-z0-9]/gi,'_')}">未测试</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+function setRes(domain, text, cls=''){
+  const el=document.getElementById('res_'+domain.replace(/[^a-z0-9]/gi,'_'));
+  if(!el) return;
+  el.className=cls;
+  el.textContent=text;
+}
+
+async function refresh(){
+  let d;
+  try{
+    const r = await fetch('/api/status');
+    d = await r.json();
+  }catch(e){
+    document.getElementById('status').innerHTML = `<span class='bad'>状态读取失败：${e?.message||e}</span>`;
+    return;
+  }
+  githubOnly = !!d.github_only;
+  document.getElementById('status').innerHTML = `<b>运行中</b> · 启动于 ${d.started_at}`;
+  document.getElementById('proxy').textContent = `代理: ${d.proxy_addr} | GUI: ${d.gui_addr} | github-only=${d.github_only}`;
+  const gs=d.git_proxy||{};
+  document.getElementById('gitStatus').innerHTML = gs.enabled
+    ? `<span class='ok'>Git代理已启用</span> ${gs.http_proxy||''}`
+    : `<span>Git代理未启用</span>`;
+
+  for(const ck of document.querySelectorAll('input[type=checkbox][data-domain]')){
+    const isGh = ck.dataset.github === '1';
+    if(githubOnly && !isGh){
+      ck.checked=false; ck.disabled=true;
+      setRes(ck.dataset.domain,'严格模式已拦截','warn');
+    }else{
+      ck.disabled=false;
+    }
+  }
+}
+
+async function testDomain(domain){
+  setRes(domain,'测试中...','warn');
+  let d;
+  try{
+    const r = await fetch('/api/test/domain?domain='+encodeURIComponent(domain));
+    d = await r.json();
+  }catch(e){
+    setRes(domain,'失败 · '+(e?.message||e),'bad');
+    return;
+  }
+  if(d.ok){
+    setRes(domain,`可达 · ${d.ms}ms · HTTP ${d.status}`,'ok');
+  }else if(d.blocked){
+    setRes(domain,'已拦截（严格模式）','warn');
+  }else{
+    setRes(domain,'失败 · '+(d.error||d.message||'unknown'),'bad');
+  }
+}
+
+document.getElementById('refreshBtn').onclick=()=>refresh();
+document.getElementById('testAllBtn').onclick=async()=>{
+  const checked=[...document.querySelectorAll('input[type=checkbox][data-domain]:checked')].map(x=>x.dataset.domain);
+  for(const d of checked){ await testDomain(d); }
+};
+document.getElementById('enableBtn').onclick=async()=>{ await fetch('/api/git/enable',{method:'POST'}); await refresh(); };
+document.getElementById('disableBtn').onclick=async()=>{ await fetch('/api/git/disable',{method:'POST'}); await refresh(); };
+
+renderRows();
+refresh();
+</script>
+</body>
+</html>

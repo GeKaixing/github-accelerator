@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# .NET build artifacts
+bin/
+obj/
+
+# local outputs
+/dist/
+/tmp/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
