@@ -5,6 +5,9 @@ using GitHub.Accelerator.Config;
 using GitHub.Accelerator.Core;
 using GitHub.Accelerator.Proxy;
 using GitHub.Accelerator.Resolver;
+#if WINDOWS_DESKTOP
+using GitHub.Accelerator.Windows;
+#endif
 
 var argsList = args.ToList();
 var cmd = argsList.Count > 0 ? argsList[0].ToLowerInvariant() : "serve";
@@ -59,6 +62,7 @@ static async Task GuiAsync(string[] args)
     var cfg = BuildConfig(args);
     var guiListen = ReadArg(args, "--gui-listen", "127.0.0.1:19000");
     var autoOpenBrowser = ReadArg(args, "--open-browser", "true").Equals("true", StringComparison.OrdinalIgnoreCase);
+    var useTray = ReadArg(args, "--tray", OperatingSystem.IsWindows() ? "true" : "false").Equals("true", StringComparison.OrdinalIgnoreCase);
     var guiUrl = $"http://{guiListen}";
 
     using var instance = SingleInstanceGuard.TryAcquire("github-accelerator-gui-single-instance");
@@ -74,6 +78,13 @@ static async Task GuiAsync(string[] args)
 
     using var cts = new CancellationTokenSource();
     Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+
+#if WINDOWS_DESKTOP
+    if (OperatingSystem.IsWindows())
+    {
+        WindowsDesktopIntegration.EnsureDesktopShortcut(cfg.Listen, guiListen, cfg.GitHubOnly);
+    }
+#endif
 
     _ = Task.Run(() => proxy.RunAsync(cts.Token), cts.Token);
 
@@ -171,6 +182,17 @@ static async Task GuiAsync(string[] args)
     app.Urls.Clear();
     app.Urls.Add(guiUrl);
     Console.WriteLine($"[gui] listening on {guiUrl}");
+
+#if WINDOWS_DESKTOP
+    using var trayHost = OperatingSystem.IsWindows() && useTray
+        ? WindowsTrayHost.Start(
+            guiUrl,
+            cfg.Listen,
+            () => cts.Cancel(),
+            OpenBrowser,
+            async (domain) => await ConnectivityChecker.CheckDomainViaProxyAsync(cfg.Listen, domain, 8))
+        : null;
+#endif
 
     if (autoOpenBrowser)
         OpenBrowser(guiUrl);
@@ -278,7 +300,7 @@ static void PrintHelp()
 
 Usage:
   github-accelerator serve [--listen 127.0.0.1:8899] [--github-only true|false]
-  github-accelerator gui [--listen 127.0.0.1:8899] [--gui-listen 127.0.0.1:19000] [--github-only true|false] [--open-browser true|false]
+  github-accelerator gui [--listen 127.0.0.1:8899] [--gui-listen 127.0.0.1:19000] [--github-only true|false] [--open-browser true|false] [--tray true|false]
   github-accelerator check [--proxy 127.0.0.1:8899] [--domain github.com]
   github-accelerator enable [--proxy 127.0.0.1:8899]
   github-accelerator disable

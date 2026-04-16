@@ -9,13 +9,19 @@ mkdir -p "$DIST"
 publish_small() {
   local rid="$1"
   local out="$DIST/$rid"
+  local framework="net8.0"
+  local trim_enabled="true"
+  if [[ "$rid" == win-* ]]; then
+    framework="net8.0-windows"
+    trim_enabled="false"
+  fi
   dotnet publish "$ROOT/github-accelerator.csproj" \
-    -c Release -r "$rid" \
+    -c Release -f "$framework" -r "$rid" \
     --self-contained true \
     -p:UseAppHost=true \
     -p:PublishSingleFile=true \
     -p:IncludeNativeLibrariesForSelfExtract=true \
-    -p:PublishTrimmed=true \
+    -p:PublishTrimmed="$trim_enabled" \
     -p:TrimMode=partial \
     -p:EnableCompressionInSingleFile=true \
     -p:DebuggerSupport=false \
